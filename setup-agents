@@ -9,6 +9,7 @@ ok()   { echo -e "${GREEN}✓${NC} $*"; }
 warn() { echo -e "${YELLOW}!${NC} $*"; }
 fail() { echo -e "${RED}✗${NC} $*"; exit 1; }
 bold() { echo -e "${BOLD}$*${NC}"; }
+info() { echo -e "  $*"; }
 
 # ── help ───────────────────────────────────────────────────────────────────
 usage() {
@@ -19,23 +20,29 @@ Single source of truth for multi-AI documentation.
 USAGE:
   setup-agents init [PATH] [--all]
   setup-agents add <adapter>
+  setup-agents migrate [PATH] [--dry-run]
   setup-agents --help | --version
 
 COMMANDS:
-  init [PATH]    Set up AGENTS.md structure in PATH (default: current dir)
-  add <adapter>  Add a tool adapter symlink to current project
-                 Adapters: cursor | windsurf | copilot
+  init [PATH]      Set up AGENTS.md structure in PATH (default: current dir)
+  add <adapter>    Add a tool adapter symlink to current project
+                   Adapters: cursor | windsurf | copilot
+  migrate [PATH]   Migrate existing .claude/ subdirs (skills, specs, etc.)
+                   Interactive. Auto dry-run if no TTY detected.
 
 OPTIONS:
-  --all          Create all tool adapter symlinks (cursor, windsurf, copilot)
-  --help         Show this help
-  --version      Show version
+  --all            Create all tool adapter symlinks (cursor, windsurf, copilot)
+  --dry-run        Show what migrate would do without making changes
+  --help           Show this help
+  --version        Show version
 
 EXAMPLES:
   setup-agents init
   setup-agents init ~/projects/myapp
   setup-agents init --all
-  setup-agents init ~/projects/myapp --all
+  setup-agents migrate
+  setup-agents migrate ~/projects/myapp
+  setup-agents migrate --dry-run
   setup-agents add cursor
 EOF
 }
@@ -44,13 +51,16 @@ EOF
 CMD=""
 TARGET_DIR=""
 ALL_ADAPTERS=false
+DRY_RUN=false
 ADAPTER=""
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
         init)       CMD="init"; shift ;;
         add)        CMD="add"; shift; ADAPTER="${1:-}"; shift || true ;;
+        migrate)    CMD="migrate"; shift ;;
         --all)      ALL_ADAPTERS=true; shift ;;
+        --dry-run)  DRY_RUN=true; shift ;;
         --help|-h)  usage; exit 0 ;;
         --version)  echo "setup-agents v${VERSION}"; exit 0 ;;
         -*)         fail "Unknown option: $1" ;;
@@ -143,6 +153,17 @@ cmd_init() {
                 ((moved++)) || true
             fi
         done
+
+        # warn if subdirectories exist — suggest migrate
+        has_subdirs=false
+        for d in .claude/*/; do
+            [[ -d "$d" ]] && has_subdirs=true && break
+        done
+        if [[ "$has_subdirs" == true ]]; then
+            echo ""
+            warn "Subdirectories found in .claude/ (skills, specs, etc.)"
+            warn "Run 'setup-agents migrate' to handle them."
+        fi
     fi
     [[ $moved -eq 0 ]] && warn "No reference files moved (already done or none found)"
 
@@ -214,8 +235,165 @@ TEMPLATE
     [[ "$ALL_ADAPTERS" == false ]] && echo "   Run with --all to create Cursor/Windsurf/Copilot adapters."
 }
 
+# ── helper: migrate a subdir from .claude/ to .agents/ + symlink ───────────
+_migrate_subdir() {
+    local name="$1"
+    local src=".claude/${name}"
+    local dest=".agents/${name}"
+
+    if [[ -e "$dest" ]]; then
+        warn ".agents/${name}/ already exists — skipping"
+        return
+    fi
+
+    mkdir -p .agents
+    mv "$src" "$dest"
+    ln -s "../.agents/${name}" ".claude/${name}"
+    ok "Moved .claude/${name}/ → .agents/${name}/ + symlink"
+}
+
+# ── helper: prompt user with numbered options, return choice ────────────────
+_prompt() {
+    local prompt="$1"; shift
+    local default="$1"; shift
+    local choice
+    read -r -p "${prompt} [${default}]: " choice
+    echo "${choice:-$default}"
+}
+
+# ── command: migrate ───────────────────────────────────────────────────────
+cmd_migrate() {
+    cd "$TARGET_DIR"
+
+    [[ -d ".claude" ]] || fail "No .claude/ directory found. Run from project root or pass PATH."
+
+    # auto dry-run if no TTY
+    if ! [ -t 0 ]; then
+        DRY_RUN=true
+        warn "No TTY detected. Running in dry-run mode."
+        warn "Run interactively: setup-agents migrate"
+        echo ""
+    fi
+
+    bold "setup-agents migrate → ${TARGET_DIR}"
+    [[ "$DRY_RUN" == true ]] && echo -e "  ${YELLOW}(dry-run — no changes will be made)${NC}"
+    echo ""
+
+    # ── detection phase ──────────────────────────────────────────────────
+    local -a items=()
+    local -a types=()
+
+    if [[ -f ".claude/settings.json" || -f ".claude/settings.local.json" ]]; then
+        items+=("settings"); types+=("settings")
+    fi
+
+    for d in .claude/*/; do
+        [[ -d "$d" ]] || continue
+        [[ -L "$d" ]] && continue  # skip existing symlinks
+        local base
+        base="$(basename "$d")"
+        case "$base" in
+            commands) items+=("$base"); types+=("commands") ;;
+            specs)    items+=("$base"); types+=("specs") ;;
+            *)        items+=("$base"); types+=("unknown") ;;
+        esac
+    done
+
+    if [[ ${#items[@]} -eq 0 ]]; then
+        ok "Nothing to migrate in .claude/ — all clean."
+        return
+    fi
+
+    # ── report ───────────────────────────────────────────────────────────
+    echo "Found in .claude/:"
+    for i in "${!items[@]}"; do
+        case "${types[$i]}" in
+            commands) echo -e "  ${YELLOW}!${NC} commands/      → Claude-specific skills. Recommended: leave in place" ;;
+            specs)    echo -e "  ${GREEN}✓${NC} specs/         → Project docs. Recommended: move to .agents/specs/ + symlink" ;;
+            settings) echo -e "  ${YELLOW}!${NC} settings.json  → Config file. Will not touch." ;;
+            unknown)  echo -e "  ${BOLD}?${NC} ${items[$i]}/$(printf '%*s' $((14 - ${#items[$i]})) '')→ Unknown subdir." ;;
+        esac
+    done
+    echo ""
+
+    if [[ "$DRY_RUN" == true ]]; then
+        echo "Dry-run complete. No changes made."
+        echo "Run interactively: setup-agents migrate"
+        return
+    fi
+
+    # ── confirm ──────────────────────────────────────────────────────────
+    read -r -p "Proceed interactively? [y/N] " confirm
+    [[ "$confirm" =~ ^[yY]$ ]] || { echo "Aborted."; exit 0; }
+    echo ""
+
+    # ── interactive per item ─────────────────────────────────────────────
+    for i in "${!items[@]}"; do
+        local item="${items[$i]}"
+        local type="${types[$i]}"
+
+        case "$type" in
+            settings)
+                warn "settings.json — skipping (never modified by setup-agents)"
+                ;;
+
+            commands)
+                echo ""
+                bold "commands/ (Claude Code skills):"
+                info "[1] Leave in .claude/commands/ (recommended — Claude-specific)"
+                info "[2] Move to .agents/commands/ + symlink"
+                info "[3] Skip"
+                local choice
+                choice=$(_prompt "Choice" "1")
+                case "$choice" in
+                    1) ok "commands/ — left in place" ;;
+                    2) _migrate_subdir "commands" ;;
+                    3) warn "commands/ — skipped" ;;
+                    *) warn "Invalid choice — skipping" ;;
+                esac
+                ;;
+
+            specs)
+                echo ""
+                bold "specs/ (project docs):"
+                info "[1] Move to .agents/specs/ + symlink (recommended)"
+                info "[2] Leave in .claude/specs/"
+                info "[3] Skip"
+                local choice
+                choice=$(_prompt "Choice" "1")
+                case "$choice" in
+                    1) _migrate_subdir "specs" ;;
+                    2) ok "specs/ — left in place" ;;
+                    3) warn "specs/ — skipped" ;;
+                    *) warn "Invalid choice — skipping" ;;
+                esac
+                ;;
+
+            unknown)
+                echo ""
+                bold "${item}/:"
+                info "[1] Move to .agents/${item}/ + symlink"
+                info "[2] Leave in .claude/${item}/"
+                info "[3] Skip (recommended — unknown purpose)"
+                local choice
+                choice=$(_prompt "Choice" "3")
+                case "$choice" in
+                    1) _migrate_subdir "$item" ;;
+                    2) ok "${item}/ — left in place" ;;
+                    3) warn "${item}/ — skipped" ;;
+                    *) warn "Invalid choice — skipping" ;;
+                esac
+                ;;
+        esac
+    done
+
+    echo ""
+    ok "Migration complete."
+}
+
 # ── dispatch ───────────────────────────────────────────────────────────────
 case "$CMD" in
-    init) cmd_init ;;
-    add)  cd "$TARGET_DIR"; cmd_add ;;
+    init)    cmd_init ;;
+    add)     cd "$TARGET_DIR"; cmd_add ;;
+    migrate) cmd_migrate ;;
 esac

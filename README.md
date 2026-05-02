@@ -6,7 +6,7 @@ Any AI tool (Claude Code, OpenCode, Cursor, Windsurf, Copilot) reads the same `A
 ## Install
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/tavomak/setup-agents/main/install.sh | sh
+curl -fsSL https://raw.githubusercontent.com/tavomak/multi-agent-cli-tool/main/install.sh | sh
 ```
 
 ## Usage

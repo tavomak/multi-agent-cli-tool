@@ -2,7 +2,7 @@
 set -euo pipefail
 
 VERSION="1.0.0"
-REPO_RAW="https://raw.githubusercontent.com/tavomak/setup-agents/main"
+REPO_RAW="https://raw.githubusercontent.com/tavomak/multi-agent-cli-tool/main"
 INSTALL_DIR="${HOME}/.local/bin"
 BIN_NAME="setup-agents"
 
