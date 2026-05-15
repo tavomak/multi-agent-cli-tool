@@ -1,15 +1,18 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-VERSION="1.0.0"
+VERSION="1.1.0"
+REPO_RAW="https://raw.githubusercontent.com/tavomak/multi-agent-cli-tool/main"
 
 # ── colors ─────────────────────────────────────────────────────────────────
 GREEN='\033[0;32m'; YELLOW='\033[1;33m'; RED='\033[0;31m'; BOLD='\033[1m'; NC='\033[0m'
 ok()   { echo -e "${GREEN}✓${NC} $*"; }
 warn() { echo -e "${YELLOW}!${NC} $*"; }
 fail() { echo -e "${RED}✗${NC} $*"; exit 1; }
+err()  { echo -e "${RED}✗${NC} $*"; }
 bold() { echo -e "${BOLD}$*${NC}"; }
 info() { echo -e "  $*"; }
+dim()  { echo -e "  - $*"; }
 
 # ── help ───────────────────────────────────────────────────────────────────
 usage() {
@@ -18,33 +21,383 @@ setup-agents v${VERSION}
 Single source of truth for multi-AI documentation.
 
 USAGE:
-  setup-agents init [PATH] [--all]
+  setup-agents init [PATH] [--all] [--template <name>]
   setup-agents add <adapter>
-  setup-agents migrate [PATH] [--dry-run]
+  setup-agents migrate [PATH] [--dry-run] [--yes]
+  setup-agents status [PATH]
+  setup-agents undo [PATH]
+  setup-agents update
+  setup-agents templates
   setup-agents --help | --version
 
 COMMANDS:
   init [PATH]      Set up AGENTS.md structure in PATH (default: current dir)
   add <adapter>    Add a tool adapter symlink to current project
-                   Adapters: cursor | windsurf | copilot
+                   Adapters: cursor | windsurf | copilot | zed
   migrate [PATH]   Migrate existing .claude/ subdirs (skills, specs, etc.)
                    Interactive. Auto dry-run if no TTY detected.
+  status [PATH]    Show current setup state and validate AGENTS.md
+  undo [PATH]      Reverse init: restore symlinks to plain files
+  update           Self-upgrade to latest version from GitHub
+  templates        List available AGENTS.md templates
 
 OPTIONS:
-  --all            Create all tool adapter symlinks (cursor, windsurf, copilot)
-  --dry-run        Show what migrate would do without making changes
-  --help           Show this help
-  --version        Show version
+  --all              Create all tool adapter symlinks
+  --template <name>  AGENTS.md template to use (default: default)
+  --dry-run          Show what migrate would do without making changes
+  --yes              Non-interactive: use defaults in migrate
+  --help             Show this help
+  --version          Show version
 
 EXAMPLES:
   setup-agents init
-  setup-agents init ~/projects/myapp
+  setup-agents init ~/projects/myapp --template node
   setup-agents init --all
-  setup-agents migrate
-  setup-agents migrate ~/projects/myapp
-  setup-agents migrate --dry-run
+  setup-agents status
+  setup-agents migrate --yes
+  setup-agents undo
+  setup-agents update
   setup-agents add cursor
+  setup-agents templates
 EOF
+}
+
+# ── templates ──────────────────────────────────────────────────────────────
+_template_default() {
+    cat << 'TEMPLATE'
+# Project — AI instructions
+
+## Session protocol
+
+**Auto-loading tools** (Claude Code, Cursor, Windsurf, Zed): this file loads automatically — no action needed.
+**Manual tools** (OpenCode, Codex, others): paste this at the start of every session:
+> Read AGENTS.md and .agents/pending-work.md before we begin.
+
+Read `.agents/pending-work.md` at session start. Acknowledge any 🔴 High priority items before starting work.
+
+When a task completes or new issues are found, update `.agents/pending-work.md`:
+- Done item: ~~strikethrough~~ the row + ✅ note in Detail column (never delete rows)
+- New item: `| 🔴 High | Action verb + object | Context and detail |`
+- Changelog entry: `| N | What changed | DD Mon YYYY |`
+- Update the `_Last updated_` date header
+
+## NEVER DO
+
+-
+
+## ALWAYS DO
+
+-
+
+## ASK FIRST
+
+-
+
+## MCPs
+
+Model Context Protocol servers this project uses:
+
+| Server | Purpose |
+|--------|---------|
+| | |
+
+> Setup instructions and full config → `.agents/mcps.md`
+
+## Skills & agents
+
+Custom commands and sub-agents available in this project:
+
+| /command | Purpose |
+|---------|---------|
+| | |
+
+> Command files → `.claude/commands/` (or `.agents/commands/` if migrated)
+
+## Reference files
+
+Consult based on task context — don't load all at once:
+
+| File | When to read |
+|------|-------------|
+| `.agents/pending-work.md` | Open tasks, priorities, and changelog — read every session |
+| `.agents/mcps.md` | MCP server list, setup, and config |
+| `.agents/` | Add project reference files here |
+TEMPLATE
+}
+
+_template_node() {
+    cat << 'TEMPLATE'
+# Project — AI instructions
+
+## Session protocol
+
+**Auto-loading tools** (Claude Code, Cursor, Windsurf, Zed): this file loads automatically — no action needed.
+**Manual tools** (OpenCode, Codex, others): paste this at the start of every session:
+> Read AGENTS.md and .agents/pending-work.md before we begin.
+
+Read `.agents/pending-work.md` at session start. Acknowledge any 🔴 High priority items before starting work.
+
+When a task completes or new issues are found, update `.agents/pending-work.md`:
+- Done item: ~~strikethrough~~ the row + ✅ note in Detail column (never delete rows)
+- New item: `| 🔴 High | Action verb + object | Context and detail |`
+- Changelog entry: `| N | What changed | DD Mon YYYY |`
+- Update the `_Last updated_` date header
+
+## NEVER DO
+
+- Commit directly to main branch
+- Push secrets or environment variables to repository
+- Install global npm packages without approval
+- Bypass type checking (ignore TypeScript errors)
+- Run production code locally for testing
+
+## ALWAYS DO
+
+- Use TypeScript strict mode
+- Run `npm run lint` and fix issues before committing
+- Run tests with `npm test` before pushing
+- Follow the existing code style (run prettier)
+- Use environment variables for sensitive data
+
+## ASK FIRST
+
+- Adding new dependencies (check package.json first)
+- Changing the project structure
+- Modifying CI/CD configuration
+- Adding new environment variables
+- Creating new configuration files
+
+## Project structure
+
+```
+src/           # Source code
+tests/         # Test files
+config/        # Configuration files
+scripts/       # Build/utility scripts
+```
+
+## Commands
+
+| Command | Purpose |
+|---------|---------|
+| `npm run dev` | Start development server |
+| `npm test` | Run tests |
+| `npm run lint` | Lint code |
+| `npm run build` | Build for production |
+
+## MCPs
+
+Model Context Protocol servers this project uses:
+
+| Server | Purpose |
+|--------|---------|
+| `filesystem` | Read/write project files |
+
+> Setup instructions and full config → `.agents/mcps.md`
+
+## Skills & agents
+
+Custom commands and sub-agents available in this project:
+
+| /command | Purpose |
+|---------|---------|
+| | |
+
+> Command files → `.claude/commands/` (or `.agents/commands/` if migrated)
+
+## Reference files
+
+Consult based on task context — don't load all at once:
+
+| File | When to read |
+|------|-------------|
+| `.agents/pending-work.md` | Open tasks, priorities, and changelog — read every session |
+| `.agents/mcps.md` | MCP server list, setup, and config |
+| `.agents/` | Add project reference files here |
+TEMPLATE
+}
+
+_template_python() {
+    cat << 'TEMPLATE'
+# Project — AI instructions
+
+## Session protocol
+
+**Auto-loading tools** (Claude Code, Cursor, Windsurf, Zed): this file loads automatically — no action needed.
+**Manual tools** (OpenCode, Codex, others): paste this at the start of every session:
+> Read AGENTS.md and .agents/pending-work.md before we begin.
+
+Read `.agents/pending-work.md` at session start. Acknowledge any 🔴 High priority items before starting work.
+
+When a task completes or new issues are found, update `.agents/pending-work.md`:
+- Done item: ~~strikethrough~~ the row + ✅ note in Detail column (never delete rows)
+- New item: `| 🔴 High | Action verb + object | Context and detail |`
+- Changelog entry: `| N | What changed | DD Mon YYYY |`
+- Update the `_Last updated_` date header
+
+## NEVER DO
+
+- Commit directly to main branch
+- Push secrets, API keys, or .env files to repository
+- Use `import *` (wildcard imports)
+- Catch bare `except:` without specifying exception type
+- Modify production data without a backup plan
+
+## ALWAYS DO
+
+- Use virtual environments (venv or poetry)
+- Type-annotate all function signatures
+- Run `ruff check .` and fix issues before committing
+- Run `pytest` before pushing
+- Follow PEP 8 style
+
+## ASK FIRST
+
+- Adding new dependencies (check pyproject.toml / requirements.txt first)
+- Changing the project structure
+- Modifying database schema or migrations
+- Adding new environment variables
+- Creating new configuration files
+
+## Project structure
+
+```
+src/           # Source code
+tests/         # Test files
+scripts/       # Utility scripts
+docs/          # Documentation
+```
+
+## Commands
+
+| Command | Purpose |
+|---------|---------|
+| `python -m pytest` | Run tests |
+| `ruff check .` | Lint code |
+| `ruff format .` | Format code |
+| `mypy src/` | Type check |
+
+## MCPs
+
+Model Context Protocol servers this project uses:
+
+| Server | Purpose |
+|--------|---------|
+| `filesystem` | Read/write project files |
+
+> Setup instructions and full config → `.agents/mcps.md`
+
+## Skills & agents
+
+Custom commands and sub-agents available in this project:
+
+| /command | Purpose |
+|---------|---------|
+| | |
+
+> Command files → `.claude/commands/` (or `.agents/commands/` if migrated)
+
+## Reference files
+
+Consult based on task context — don't load all at once:
+
+| File | When to read |
+|------|-------------|
+| `.agents/pending-work.md` | Open tasks, priorities, and changelog — read every session |
+| `.agents/mcps.md` | MCP server list, setup, and config |
+| `.agents/` | Add project reference files here |
+TEMPLATE
+}
+
+_mcps_starter() {
+    cat << 'MCPS'
+# MCP Servers
+
+MCPs this project requires. Source of truth lives here — keep in sync with AGENTS.md.
+
+## Configured servers
+
+| Server | Command | Purpose |
+|--------|---------|---------|
+| | | |
+
+## Adding a new server
+
+1. Add to `.claude/settings.json` under `mcpServers`
+2. Document it in the table above
+3. Add a one-liner to `## MCPs` in `AGENTS.md`
+
+```json
+{
+  "mcpServers": {
+    "server-name": {
+      "command": "npx",
+      "args": ["-y", "@scope/mcp-server", "."]
+    }
+  }
+}
+```
+
+## Skills & agents
+
+Custom commands live in `.claude/commands/` (or `.agents/commands/` if migrated).
+Each `.md` file in that directory becomes a `/command` in Claude Code.
+Sub-agents are commands with an agentic prompt — same file format, no special config needed.
+
+| File | /command | Purpose |
+|------|---------|---------|
+| | | |
+MCPS
+}
+
+_pending_work_starter() {
+    local project_name="$1"
+    local today
+    today="$(date '+%d %b %Y')"
+    cat << TEMPLATE
+# Pending work — ${project_name}
+_Last updated: ${today}_
+
+## How to use
+
+- Priorities: 🔴 High · 🟡 Medium · 🟢 Low
+- Done: ~~strikethrough~~ row + ✅ note in Detail column — never delete rows
+- New item format: \`| 🔴 High | Action verb + object | Context and detail |\`
+- Organize by domain: replace or add \`## Area\` sections as needed (e.g. \`## Backend\`, \`## Infrastructure\`)
+
+## Pending
+
+| Priority | Action | Detail |
+|----------|--------|--------|
+| | | |
+
+---
+
+## Changelog
+
+| # | Change | Date |
+|---|--------|------|
+| 1 | Project initialized | ${today} |
+TEMPLATE
+}
+
+_get_template() {
+    local name="${1:-default}"
+    case "$name" in
+        default) _template_default ;;
+        node)    _template_node ;;
+        python)  _template_python ;;
+        *)       fail "Unknown template: '${name}'. Run 'setup-agents templates' to list available." ;;
+    esac
+}
+
+cmd_templates() {
+    bold "Available templates:"
+    echo "  default  — minimal AI instructions (blank)"
+    echo "  node     — Node.js / TypeScript project"
+    echo "  python   — Python project (ruff, pytest, mypy)"
+    echo ""
+    echo "Usage: setup-agents init --template <name>"
 }
 
 # ── arg parsing ────────────────────────────────────────────────────────────
@@ -52,15 +405,27 @@ CMD=""
 TARGET_DIR=""
 ALL_ADAPTERS=false
 DRY_RUN=false
+YES=false
 ADAPTER=""
+TEMPLATE_NAME="default"
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
         init)       CMD="init"; shift ;;
-        add)        CMD="add"; shift; ADAPTER="${1:-}"; shift || true ;;
+        add)        CMD="add"; shift
+                    if [[ -n "${1:-}" && "${1:-}" != --* ]]; then
+                        ADAPTER="$1"; shift
+                    fi
+                    ;;
         migrate)    CMD="migrate"; shift ;;
+        status)     CMD="status"; shift ;;
+        undo)       CMD="undo"; shift ;;
+        update)     CMD="update"; shift ;;
+        templates)  CMD="templates"; shift ;;
         --all)      ALL_ADAPTERS=true; shift ;;
         --dry-run)  DRY_RUN=true; shift ;;
+        --yes|-y)   YES=true; shift ;;
+        --template) shift; TEMPLATE_NAME="${1:-}"; [[ -z "$TEMPLATE_NAME" ]] && fail "--template requires a name"; shift ;;
         --help|-h)  usage; exit 0 ;;
         --version)  echo "setup-agents v${VERSION}"; exit 0 ;;
         -*)         fail "Unknown option: $1" ;;
@@ -86,8 +451,18 @@ TARGET_DIR="$(cd "$TARGET_DIR" 2>/dev/null && pwd)" || fail "Directory not found
 
 # ── command: add ───────────────────────────────────────────────────────────
 cmd_add() {
-    [[ -z "$ADAPTER" ]] && fail "Specify adapter: cursor | windsurf | copilot"
     [[ -f "AGENTS.md" ]] || fail "No AGENTS.md found. Run 'setup-agents init' first."
+
+    if [[ "$ALL_ADAPTERS" == true && -z "$ADAPTER" ]]; then
+        bold "Tool adapters:"
+        ADAPTER="cursor";   cmd_add
+        ADAPTER="windsurf"; cmd_add
+        ADAPTER="copilot";  cmd_add
+        ADAPTER="zed";      cmd_add
+        return
+    fi
+
+    [[ -z "$ADAPTER" ]] && fail "Specify adapter: cursor | windsurf | copilot | zed (or --all)"
 
     case "$ADAPTER" in
         cursor)
@@ -115,8 +490,17 @@ cmd_add() {
                 ok "Created .github/copilot-instructions.md → ../AGENTS.md (Copilot)"
             fi
             ;;
+        zed)
+            mkdir -p .zed
+            if [[ -e ".zed/rules.md" ]]; then
+                warn ".zed/rules.md already exists — skipping"
+            else
+                ln -s ../AGENTS.md .zed/rules.md
+                ok "Created .zed/rules.md → ../AGENTS.md (Zed)"
+            fi
+            ;;
         *)
-            fail "Unknown adapter: $ADAPTER. Options: cursor | windsurf | copilot"
+            fail "Unknown adapter: $ADAPTER. Options: cursor | windsurf | copilot | zed"
             ;;
     esac
 }
@@ -128,12 +512,26 @@ cmd_init() {
 
     cd "$TARGET_DIR"
 
-    # 1. create .agents/
+    # 1. create .agents/ and seed starter files
     if [[ -d ".agents" ]]; then
         warn ".agents/ already exists — skipping"
     else
         mkdir .agents
         ok "Created .agents/"
+    fi
+
+    if [[ -f ".agents/mcps.md" ]]; then
+        warn ".agents/mcps.md already exists — skipping"
+    else
+        _mcps_starter > .agents/mcps.md
+        ok "Created .agents/mcps.md (MCP + skills registry)"
+    fi
+
+    if [[ -f ".agents/pending-work.md" ]]; then
+        warn ".agents/pending-work.md already exists — skipping"
+    else
+        _pending_work_starter "$(basename "$TARGET_DIR")" > .agents/pending-work.md
+        ok "Created .agents/pending-work.md (task tracking)"
     fi
 
     # 2. move all .md files from .claude/ (except CLAUDE.md)
@@ -154,10 +552,10 @@ cmd_init() {
             fi
         done
 
-        # warn if subdirectories exist — suggest migrate
+        # warn if real (non-symlink) subdirectories exist — suggest migrate
         has_subdirs=false
         for d in .claude/*/; do
-            [[ -d "$d" ]] && has_subdirs=true && break
+            [[ -d "$d" ]] && [[ ! -L "$d" ]] && has_subdirs=true && break
         done
         if [[ "$has_subdirs" == true ]]; then
             echo ""
@@ -178,30 +576,35 @@ cmd_init() {
         ok "Created AGENTS.md from .claude/CLAUDE.md"
         warn "Review AGENTS.md — update any paths from .claude/ to .agents/"
     else
-        cat > AGENTS.md << 'TEMPLATE'
-# Project — AI instructions
+        # auto-discover existing rules files before falling back to template
+        local discovered=""
+        for candidate in ".cursorrules" ".windsurfrules" ".github/copilot-instructions.md"; do
+            if [[ -f "$candidate" && ! -L "$candidate" ]]; then
+                discovered="$candidate"
+                break
+            fi
+        done
 
-## NEVER DO
-
--
-
-## ALWAYS DO
-
--
-
-## ASK FIRST
-
--
-
-## Reference files
-
-Consult based on task context — don't load all at once:
-
-| File | When to read |
-|------|-------------|
-| `.agents/` | Add your reference files here |
-TEMPLATE
-        ok "Created AGENTS.md template"
+        if [[ -n "$discovered" ]] && [ -t 0 ]; then
+            echo ""
+            warn "Found existing rules file: $discovered"
+            read -r -p "  Use it as AGENTS.md content? [Y/n] " choice
+            if [[ ! "$choice" =~ ^[nN]$ ]]; then
+                cp "$discovered" AGENTS.md
+                ok "Created AGENTS.md from $discovered"
+                warn "Review AGENTS.md content — clean up tool-specific formatting if needed"
+            else
+                _get_template "$TEMPLATE_NAME" > AGENTS.md
+                ok "Created AGENTS.md (template: ${TEMPLATE_NAME})"
+            fi
+        elif [[ -n "$discovered" ]]; then
+            warn "Found $discovered but no TTY — using template. Run interactively to use it."
+            _get_template "$TEMPLATE_NAME" > AGENTS.md
+            ok "Created AGENTS.md (template: ${TEMPLATE_NAME})"
+        else
+            _get_template "$TEMPLATE_NAME" > AGENTS.md
+            ok "Created AGENTS.md (template: ${TEMPLATE_NAME})"
+        fi
     fi
 
     # 4. replace .claude/CLAUDE.md with symlink
@@ -228,11 +631,191 @@ TEMPLATE
         ADAPTER="cursor";   cmd_add
         ADAPTER="windsurf"; cmd_add
         ADAPTER="copilot";  cmd_add
+        ADAPTER="zed";      cmd_add
     fi
 
     echo ""
     ok "Done. Edit AGENTS.md — all tools read it automatically."
-    [[ "$ALL_ADAPTERS" == false ]] && echo "   Run with --all to create Cursor/Windsurf/Copilot adapters."
+    [[ "$ALL_ADAPTERS" == false ]] && echo "   Run with --all to create Cursor/Windsurf/Copilot/Zed adapters."
+
+    # .gitignore tip
+    if [[ -f ".gitignore" ]] && grep -q "\.local\.md" .gitignore 2>/dev/null; then
+        true
+    else
+        echo "   Tip: add '.agents/*.local.md' to .gitignore for local-only notes not meant for git."
+    fi
+}
+
+# ── helper: check single adapter for status output ─────────────────────────
+_check_adapter() {
+    local path="$1" label="$2"
+    if [[ -L "$path" ]]; then
+        local target
+        target="$(readlink "$path")"
+        ok "${label}: ${path} → ${target}"
+    elif [[ -f "$path" ]]; then
+        warn "${label}: ${path} exists but is not a symlink (has own content)"
+    else
+        dim "${label}: not configured (setup-agents add $(echo "$label" | tr '[:upper:]' '[:lower:]'))"
+    fi
+}
+
+# ── command: status ────────────────────────────────────────────────────────
+cmd_status() {
+    cd "$TARGET_DIR"
+
+    bold "setup-agents status → ${TARGET_DIR}"
+    echo ""
+
+    # core files
+    echo "Core:"
+    if [[ -f "AGENTS.md" && ! -L "AGENTS.md" ]]; then
+        ok "AGENTS.md"
+    elif [[ -L "AGENTS.md" ]]; then
+        warn "AGENTS.md is a symlink (unusual — should be the source file)"
+    else
+        err "AGENTS.md missing — run 'setup-agents init'"
+    fi
+
+    if [[ -d ".agents" ]]; then
+        local count
+        count="$(find .agents -maxdepth 1 -name '*.md' | wc -l | tr -d ' ')"
+        ok ".agents/ (${count} .md files)"
+        [[ -f ".agents/mcps.md" ]]          && ok ".agents/mcps.md"          || warn ".agents/mcps.md missing — run 'setup-agents init' to create"
+        [[ -f ".agents/pending-work.md" ]] && ok ".agents/pending-work.md"  || warn ".agents/pending-work.md missing — run 'setup-agents init' to create"
+    else
+        warn ".agents/ not found"
+    fi
+
+    if [[ -L ".claude/CLAUDE.md" ]]; then
+        local target
+        target="$(readlink ".claude/CLAUDE.md")"
+        if [[ "$target" == "../AGENTS.md" ]]; then
+            ok ".claude/CLAUDE.md → AGENTS.md"
+        else
+            warn ".claude/CLAUDE.md → ${target} (unexpected target)"
+        fi
+    elif [[ -f ".claude/CLAUDE.md" ]]; then
+        warn ".claude/CLAUDE.md is a plain file — run 'setup-agents init' to convert"
+    else
+        warn ".claude/CLAUDE.md missing"
+    fi
+
+    echo ""
+    echo "Adapters:"
+    _check_adapter ".cursorrules" "Cursor"
+    _check_adapter ".windsurfrules" "Windsurf"
+    _check_adapter ".github/copilot-instructions.md" "Copilot"
+    _check_adapter ".zed/rules.md" "Zed"
+
+    # validation
+    if [[ -f "AGENTS.md" ]]; then
+        echo ""
+        echo "Validation:"
+        local issues=0
+        for section in "## Session protocol" "## NEVER DO" "## ALWAYS DO" "## ASK FIRST"; do
+            if grep -q "^${section}" AGENTS.md 2>/dev/null; then
+                ok "Has '${section}'"
+            else
+                warn "Missing section '${section}'"
+                ((issues++)) || true
+            fi
+        done
+
+        # check for broken symlinks in .agents/
+        local broken=0
+        for f in .agents/*; do
+            [[ -L "$f" ]] && [[ ! -e "$f" ]] && { warn "Broken symlink: $f"; ((broken++)) || true; }
+        done
+
+        [[ $issues -eq 0 && $broken -eq 0 ]] && ok "All checks passed"
+    fi
+}
+
+# ── command: undo ──────────────────────────────────────────────────────────
+cmd_undo() {
+    cd "$TARGET_DIR"
+
+    bold "setup-agents undo → ${TARGET_DIR}"
+    echo ""
+
+    local undone=0
+
+    # restore .claude/CLAUDE.md from symlink to plain file
+    if [[ -L ".claude/CLAUDE.md" ]]; then
+        local target
+        target="$(readlink ".claude/CLAUDE.md")"
+        if [[ "$target" == "../AGENTS.md" ]]; then
+            rm ".claude/CLAUDE.md"
+            if [[ -f "AGENTS.md" ]]; then
+                cp "AGENTS.md" ".claude/CLAUDE.md"
+                ok "Restored .claude/CLAUDE.md (copied from AGENTS.md)"
+            else
+                warn "AGENTS.md not found — .claude/CLAUDE.md removed but not restored"
+            fi
+            ((undone++)) || true
+        else
+            warn ".claude/CLAUDE.md points to ${target} — skipping (not managed by setup-agents)"
+        fi
+    elif [[ -f ".claude/CLAUDE.md" ]]; then
+        warn ".claude/CLAUDE.md is already a plain file — nothing to undo"
+    fi
+
+    # remove adapter symlinks
+    local adapters=(".cursorrules:.cursorrules" ".windsurfrules:.windsurfrules" ".github/copilot-instructions.md:copilot-instructions.md" ".zed/rules.md:rules.md")
+    for entry in "${adapters[@]}"; do
+        local path="${entry%%:*}"
+        if [[ -L "$path" ]]; then
+            rm "$path"
+            ok "Removed symlink: $path"
+            ((undone++)) || true
+        fi
+    done
+
+    echo ""
+    if [[ $undone -eq 0 ]]; then
+        warn "Nothing to undo."
+    else
+        ok "Done. AGENTS.md and .agents/ left in place — remove manually if needed."
+    fi
+}
+
+# ── command: update ────────────────────────────────────────────────────────
+cmd_update() {
+    # locate installed binary
+    local installed
+    if installed="$(command -v setup-agents 2>/dev/null)" && [[ -w "$installed" ]]; then
+        : # writable bin in PATH
+    elif [[ -x "$0" && -w "$0" ]]; then
+        installed="$0"
+    else
+        fail "Cannot locate writable setup-agents binary. Try: sudo setup-agents update"
+    fi
+
+    bold "Checking for updates..."
+    echo "  Current: v${VERSION}"
+    echo "  Source:  ${REPO_RAW}/setup-agents"
+    echo ""
+
+    local tmp
+    tmp="$(mktemp)"
+    # shellcheck disable=SC2064
+    trap "rm -f '$tmp'" EXIT
+
+    curl -fsSL "${REPO_RAW}/setup-agents" -o "$tmp" || fail "Download failed. Check your connection."
+
+    local new_version
+    new_version="$(grep '^VERSION=' "$tmp" | head -1 | cut -d'"' -f2)"
+
+    if [[ "$new_version" == "$VERSION" ]]; then
+        ok "Already up to date (v${VERSION})."
+        return
+    fi
+
+    chmod +x "$tmp"
+    mv "$tmp" "$installed"
+    trap - EXIT
+    ok "Updated v${VERSION} → v${new_version} at ${installed}"
 }
 
 # ── helper: migrate a subdir from .claude/ to .agents/ + symlink ───────────
@@ -254,8 +837,8 @@ _migrate_subdir() {
 
 # ── helper: prompt user with numbered options, return choice ────────────────
 _prompt() {
-    local prompt="$1"; shift
-    local default="$1"; shift
+    local prompt="$1"
+    local default="$2"
     local choice
     read -r -p "${prompt} [${default}]: " choice
     echo "${choice:-$default}"
@@ -267,16 +850,17 @@ cmd_migrate() {
 
     [[ -d ".claude" ]] || fail "No .claude/ directory found. Run from project root or pass PATH."
 
-    # auto dry-run if no TTY
-    if ! [ -t 0 ]; then
+    # auto dry-run if no TTY and --yes not set
+    if ! [ -t 0 ] && [[ "$YES" == false ]]; then
         DRY_RUN=true
         warn "No TTY detected. Running in dry-run mode."
-        warn "Run interactively: setup-agents migrate"
+        warn "Run interactively or with --yes for defaults: setup-agents migrate --yes"
         echo ""
     fi
 
     bold "setup-agents migrate → ${TARGET_DIR}"
     [[ "$DRY_RUN" == true ]] && echo -e "  ${YELLOW}(dry-run — no changes will be made)${NC}"
+    [[ "$YES"     == true ]] && echo -e "  ${YELLOW}(--yes — using defaults for all items)${NC}"
     echo ""
 
     # ── detection phase ──────────────────────────────────────────────────
@@ -287,10 +871,10 @@ cmd_migrate() {
         items+=("settings"); types+=("settings")
     fi
 
+    local base
     for d in .claude/*/; do
         [[ -d "$d" ]] || continue
         [[ -L "$d" ]] && continue  # skip existing symlinks
-        local base
         base="$(basename "$d")"
         case "$base" in
             commands) items+=("$base"); types+=("commands") ;;
@@ -306,12 +890,17 @@ cmd_migrate() {
 
     # ── report ───────────────────────────────────────────────────────────
     echo "Found in .claude/:"
+    local pad
     for i in "${!items[@]}"; do
         case "${types[$i]}" in
-            commands) echo -e "  ${YELLOW}!${NC} commands/      → Claude-specific skills. Recommended: leave in place" ;;
-            specs)    echo -e "  ${GREEN}✓${NC} specs/         → Project docs. Recommended: move to .agents/specs/ + symlink" ;;
+            commands) echo -e "  ${YELLOW}!${NC} commands/      → Claude-specific skills. Default: leave in place" ;;
+            specs)    echo -e "  ${GREEN}✓${NC} specs/         → Project docs. Default: move to .agents/specs/ + symlink" ;;
             settings) echo -e "  ${YELLOW}!${NC} settings.json  → Config file. Will not touch." ;;
-            unknown)  echo -e "  ${BOLD}?${NC} ${items[$i]}/$(printf '%*s' $((14 - ${#items[$i]})) '')→ Unknown subdir." ;;
+            unknown)
+                pad=$(( 14 - ${#items[$i]} ))
+                (( pad < 0 )) && pad=0
+                echo -e "  ${BOLD}?${NC} ${items[$i]}/${NC}$(printf '%*s' "$pad" '')→ Unknown subdir. Default: skip"
+                ;;
         esac
     done
     echo ""
@@ -319,18 +908,22 @@ cmd_migrate() {
     if [[ "$DRY_RUN" == true ]]; then
         echo "Dry-run complete. No changes made."
         echo "Run interactively: setup-agents migrate"
+        echo "Run with defaults: setup-agents migrate --yes"
         return
     fi
 
-    # ── confirm ──────────────────────────────────────────────────────────
-    read -r -p "Proceed interactively? [y/N] " confirm
-    [[ "$confirm" =~ ^[yY]$ ]] || { echo "Aborted."; exit 0; }
-    echo ""
+    # ── confirm (skip if --yes) ───────────────────────────────────────────
+    if [[ "$YES" == false ]]; then
+        read -r -p "Proceed interactively? [y/N] " confirm
+        [[ "$confirm" =~ ^[yY]$ ]] || { echo "Aborted."; exit 0; }
+        echo ""
+    fi
 
     # ── interactive per item ─────────────────────────────────────────────
+    local item type choice
     for i in "${!items[@]}"; do
-        local item="${items[$i]}"
-        local type="${types[$i]}"
+        item="${items[$i]}"
+        type="${types[$i]}"
 
         case "$type" in
             settings)
@@ -338,51 +931,60 @@ cmd_migrate() {
                 ;;
 
             commands)
-                echo ""
-                bold "commands/ (Claude Code skills):"
-                info "[1] Leave in .claude/commands/ (recommended — Claude-specific)"
-                info "[2] Move to .agents/commands/ + symlink"
-                info "[3] Skip"
-                local choice
-                choice=$(_prompt "Choice" "1")
-                case "$choice" in
-                    1) ok "commands/ — left in place" ;;
-                    2) _migrate_subdir "commands" ;;
-                    3) warn "commands/ — skipped" ;;
-                    *) warn "Invalid choice — skipping" ;;
-                esac
+                if [[ "$YES" == true ]]; then
+                    ok "commands/ — left in place (default)"
+                else
+                    echo ""
+                    bold "commands/ (Claude Code skills):"
+                    info "[1] Leave in .claude/commands/ (recommended — Claude-specific)"
+                    info "[2] Move to .agents/commands/ + symlink"
+                    info "[3] Skip"
+                    choice=$(_prompt "Choice" "1")
+                    case "$choice" in
+                        1) ok "commands/ — left in place" ;;
+                        2) _migrate_subdir "commands" ;;
+                        3) warn "commands/ — skipped" ;;
+                        *) warn "Invalid choice — skipping" ;;
+                    esac
+                fi
                 ;;
 
             specs)
-                echo ""
-                bold "specs/ (project docs):"
-                info "[1] Move to .agents/specs/ + symlink (recommended)"
-                info "[2] Leave in .claude/specs/"
-                info "[3] Skip"
-                local choice
-                choice=$(_prompt "Choice" "1")
-                case "$choice" in
-                    1) _migrate_subdir "specs" ;;
-                    2) ok "specs/ — left in place" ;;
-                    3) warn "specs/ — skipped" ;;
-                    *) warn "Invalid choice — skipping" ;;
-                esac
+                if [[ "$YES" == true ]]; then
+                    _migrate_subdir "specs"
+                else
+                    echo ""
+                    bold "specs/ (project docs):"
+                    info "[1] Move to .agents/specs/ + symlink (recommended)"
+                    info "[2] Leave in .claude/specs/"
+                    info "[3] Skip"
+                    choice=$(_prompt "Choice" "1")
+                    case "$choice" in
+                        1) _migrate_subdir "specs" ;;
+                        2) ok "specs/ — left in place" ;;
+                        3) warn "specs/ — skipped" ;;
+                        *) warn "Invalid choice — skipping" ;;
+                    esac
+                fi
                 ;;
 
             unknown)
-                echo ""
-                bold "${item}/:"
-                info "[1] Move to .agents/${item}/ + symlink"
-                info "[2] Leave in .claude/${item}/"
-                info "[3] Skip (recommended — unknown purpose)"
-                local choice
-                choice=$(_prompt "Choice" "3")
-                case "$choice" in
-                    1) _migrate_subdir "$item" ;;
-                    2) ok "${item}/ — left in place" ;;
-                    3) warn "${item}/ — skipped" ;;
-                    *) warn "Invalid choice — skipping" ;;
-                esac
+                if [[ "$YES" == true ]]; then
+                    warn "${item}/ — skipped (default for unknown)"
+                else
+                    echo ""
+                    bold "${item}/:"
+                    info "[1] Move to .agents/${item}/ + symlink"
+                    info "[2] Leave in .claude/${item}/"
+                    info "[3] Skip (recommended — unknown purpose)"
+                    choice=$(_prompt "Choice" "3")
+                    case "$choice" in
+                        1) _migrate_subdir "$item" ;;
+                        2) ok "${item}/ — left in place" ;;
+                        3) warn "${item}/ — skipped" ;;
+                        *) warn "Invalid choice — skipping" ;;
+                    esac
+                fi
                 ;;
         esac
     done
@@ -393,7 +995,11 @@ cmd_migrate() {
 
 # ── dispatch ───────────────────────────────────────────────────────────────
 case "$CMD" in
-    init)    cmd_init ;;
-    add)     cd "$TARGET_DIR"; cmd_add ;;
-    migrate) cmd_migrate ;;
+    init)      cmd_init ;;
+    add)       cd "$TARGET_DIR"; cmd_add ;;
+    migrate)   cmd_migrate ;;
+    status)    cmd_status ;;
+    undo)      cmd_undo ;;
+    update)    cmd_update ;;
+    templates) cmd_templates ;;
 esac
