@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # test.sh — integration tests for setup-agents
 # Usage: ./test.sh [/path/to/setup-agents]
+# shellcheck disable=SC2015  # `cond && _ok || _fail` is the assertion idiom; _ok always returns 0
 
 SETUP_AGENTS="${1:-$(cd "$(dirname "$0")" && pwd)/setup-agents}"
 
@@ -598,7 +599,9 @@ test_update_newer_version_installs() {
 
     assert_output_contains "binary reports new version" "9.9.9" "$d/bin/setup-agents" --version
 
-    local perms; perms="$(ls -l "$d/bin/setup-agents" | cut -c1-10)"
+    local perms
+    # shellcheck disable=SC2012  # ls is the portable way to read perm string (stat flags differ macOS/Linux)
+    perms="$(ls -l "$d/bin/setup-agents" | cut -c1-10)"
     [[ "$perms" == "-rwxr-xr-x" ]] \
         && _ok "installed binary is 755" \
         || _fail "perms are '$perms' (want -rwxr-xr-x)"

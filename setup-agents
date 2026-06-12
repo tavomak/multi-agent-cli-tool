@@ -792,8 +792,8 @@ cmd_status() {
         local count
         count="$(find .agents -maxdepth 1 -name '*.md' | wc -l | tr -d ' ')"
         ok ".agents/ (${count} .md files)"
-        [[ -f ".agents/mcps.md" ]]          && ok ".agents/mcps.md"          || warn ".agents/mcps.md missing — run 'setup-agents init' to create"
-        [[ -f ".agents/pending-work.md" ]] && ok ".agents/pending-work.md"  || warn ".agents/pending-work.md missing — run 'setup-agents init' to create"
+        if [[ -f ".agents/mcps.md" ]]; then ok ".agents/mcps.md"; else warn ".agents/mcps.md missing — run 'setup-agents init' to create"; fi
+        if [[ -f ".agents/pending-work.md" ]]; then ok ".agents/pending-work.md"; else warn ".agents/pending-work.md missing — run 'setup-agents init' to create"; fi
     else
         warn ".agents/ not found"
     fi
