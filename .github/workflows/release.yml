@@ -1,0 +1,92 @@
+name: Release
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+
+concurrency: release
+
+jobs:
+  release:
+    # don't re-release the release commit itself
+    if: "!startsWith(github.event.head_commit.message, 'chore(release):')"
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Compute next version
+        id: ver
+        run: |
+          set -euo pipefail
+          file_version="$(grep '^VERSION=' setup-agents | head -1 | cut -d'"' -f2)"
+          last_tag="$(git describe --tags --abbrev=0 2>/dev/null || echo '')"
+
+          # bootstrap: no tags yet — tag current version, no bump
+          if [[ -z "$last_tag" ]]; then
+            echo "next=${file_version}" >> "$GITHUB_OUTPUT"
+            echo "bump=bootstrap" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          base="${last_tag#v}"
+          log="$(git log --format='%s%n%b' "${last_tag}..HEAD")"
+
+          bump="none"
+          if echo "$log" | grep -qE '^[a-z]+(\(.+\))?!:|BREAKING CHANGE'; then
+            bump="major"
+          elif echo "$log" | grep -qE '^feat(\(.+\))?:'; then
+            bump="minor"
+          elif echo "$log" | grep -qE '^(fix|perf)(\(.+\))?:'; then
+            bump="patch"
+          fi
+
+          if [[ "$bump" == "none" ]]; then
+            echo "No feat/fix/perf/breaking commits since ${last_tag} — no release."
+            echo "bump=none" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          IFS=. read -r major minor patch <<< "$base"
+          case "$bump" in
+            major) next="$((major + 1)).0.0" ;;
+            minor) next="${major}.$((minor + 1)).0" ;;
+            patch) next="${major}.${minor}.$((patch + 1))" ;;
+          esac
+
+          echo "bump=${bump}" >> "$GITHUB_OUTPUT"
+          echo "next=${next}" >> "$GITHUB_OUTPUT"
+          echo "Releasing v${next} (${bump} bump from v${base})"
+
+      - name: Write version, commit, tag
+        if: steps.ver.outputs.bump != 'none' && steps.ver.outputs.bump != 'bootstrap'
+        run: |
+          set -euo pipefail
+          next="${{ steps.ver.outputs.next }}"
+          sed -i "s/^VERSION=.*/VERSION=\"${next}\"/" setup-agents
+          ./test.sh
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add setup-agents
+          git commit -m "chore(release): v${next} [skip ci]"
+          git tag "v${next}"
+          git push origin main --follow-tags
+
+      - name: Bootstrap tag
+        if: steps.ver.outputs.bump == 'bootstrap'
+        run: |
+          set -euo pipefail
+          next="${{ steps.ver.outputs.next }}"
+          git tag "v${next}"
+          git push origin "v${next}"
+
+      - name: GitHub release
+        if: steps.ver.outputs.bump != 'none'
+        run: |
+          gh release create "v${{ steps.ver.outputs.next }}" --generate-notes

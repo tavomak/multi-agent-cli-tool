@@ -125,3 +125,16 @@ setup-agents migrate  # handles subdirectories (commands/, specs/, etc.)
 ## Idempotent
 
 Safe to run multiple times — skips any step already completed.
+
+## Releases
+
+Automated on push to `main` (conventional commits):
+
+| Commit | Bump |
+|--------|------|
+| `feat!:` / `BREAKING CHANGE` | major |
+| `feat:` | minor |
+| `fix:` / `perf:` | patch |
+| anything else | no release |
+
+The workflow writes `VERSION=` into `setup-agents`, runs the test suite, commits, tags `vX.Y.Z`, and creates a GitHub release. Never bump `VERSION` by hand — `setup-agents update` reads it from `main`.

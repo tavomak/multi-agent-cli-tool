@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-VERSION="1.2.0"
+VERSION="1.2.1"
 REPO_RAW="${SETUP_AGENTS_REPO_RAW:-https://raw.githubusercontent.com/tavomak/multi-agent-cli-tool/main}"
 
 # ── colors ─────────────────────────────────────────────────────────────────
@@ -928,7 +928,12 @@ cmd_update() {
     [[ -n "$new_version" ]] || fail "Downloaded file has no VERSION — aborting. Binary unchanged."
 
     if [[ "$new_version" == "$VERSION" ]]; then
-        ok "Already up to date (v${VERSION})."
+        if cmp -s "$tmp" "$installed"; then
+            ok "Already up to date (v${VERSION})."
+        else
+            warn "Remote file differs but version is still v${VERSION}."
+            warn "Upstream forgot to bump VERSION — not updating until it does."
+        fi
         return
     fi
 

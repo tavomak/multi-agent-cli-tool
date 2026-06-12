@@ -590,6 +590,21 @@ test_update_same_version_noop() {
     rm -rf "$d"
 }
 
+test_update_same_version_drift_warns() {
+    local d; d="$(tmp_dir)"
+    _update_sandbox "$d"
+    { cat "$SETUP_AGENTS"; echo "# content drift"; } > "$d/repo/setup-agents"
+
+    assert_output_contains "warns on same-version content drift" "differs" \
+        env SETUP_AGENTS_REPO_RAW="file://$d/repo" "$d/bin/setup-agents" update
+
+    cmp -s "$SETUP_AGENTS" "$d/bin/setup-agents" \
+        && _ok "binary unchanged on drift" \
+        || _fail "binary modified despite unchanged version"
+
+    rm -rf "$d"
+}
+
 test_update_newer_version_installs() {
     local d; d="$(tmp_dir)"
     _update_sandbox "$d"
@@ -690,6 +705,7 @@ TESTS=(
 
     # update
     test_update_same_version_noop
+    test_update_same_version_drift_warns
     test_update_newer_version_installs
     test_update_rejects_invalid_bash
     test_update_rejects_missing_version
