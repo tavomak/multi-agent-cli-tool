@@ -111,6 +111,7 @@ test_help() {
 test_templates() {
     assert_output_contains "lists default" "default" "$SETUP_AGENTS" templates
     assert_output_contains "lists node"    "node"    "$SETUP_AGENTS" templates
+    assert_output_contains "lists next"    "next"    "$SETUP_AGENTS" templates
     assert_output_contains "lists python"  "python"  "$SETUP_AGENTS" templates
 }
 
@@ -159,6 +160,18 @@ test_init_template_node() {
     assert_contains "$d/AGENTS.md" "npm run dev"
     assert_contains "$d/AGENTS.md" "npm test"
     assert_contains "$d/AGENTS.md" "TypeScript strict mode"
+
+    rm -rf "$d"
+}
+
+test_init_template_next() {
+    local d; d="$(tmp_dir)"
+    "$SETUP_AGENTS" init "$d" --template next >/dev/null 2>&1
+
+    assert_contains "$d/AGENTS.md" "next/image"
+    assert_contains "$d/AGENTS.md" "## Specs workflow"
+    assert_contains "$d/AGENTS.md" "NEXT_PUBLIC_"
+    assert_contains "$d/AGENTS.md" "## NEVER DO"
 
     rm -rf "$d"
 }
@@ -638,6 +651,7 @@ TESTS=(
     # init
     test_init_default
     test_init_template_node
+    test_init_template_next
     test_init_template_python
     test_init_all
     test_init_idempotent

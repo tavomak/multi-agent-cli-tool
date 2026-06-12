@@ -311,6 +311,110 @@ Consult based on task context — don't load all at once:
 TEMPLATE
 }
 
+_template_next() {
+    cat << 'TEMPLATE'
+# Project — AI instructions
+
+## Session protocol
+
+**Auto-loading tools** (Claude Code, Cursor, Windsurf, Zed): this file loads automatically — no action needed.
+**Manual tools** (OpenCode, Codex, others): paste this at the start of every session:
+> Read AGENTS.md and .agents/pending-work.md before we begin.
+
+Read `.agents/pending-work.md` at session start. Acknowledge any 🔴 High priority items before starting work.
+
+When a task completes or new issues are found, update `.agents/pending-work.md`:
+- Done item: ~~strikethrough~~ the row + ✅ note in Detail column (never delete rows)
+- New item: `| 🔴 High | Action verb + object | Context and detail |`
+- Changelog entry: `| N | What changed | DD Mon YYYY |`
+- Update the `_Last updated_` date header
+
+## NEVER DO
+
+- Commit directly to main branch
+- Push secrets or .env files to repository
+- Use `<img>` — always `next/image`
+- Mix package managers — check the lockfile and use the matching one
+- Ignore ESLint or TypeScript errors to make a build pass
+- Write custom CSS or inline styles when a Tailwind class exists (if project uses Tailwind)
+- Create a component without checking if one already exists
+
+## ALWAYS DO
+
+- Run lint and build before pushing
+- Use `next/image` with `priority` on the LCP image
+- Use env vars for sensitive data — `NEXT_PUBLIC_` only for client-safe values
+- Follow the existing data-fetching pattern (Pages Router: `getStaticProps`/ISR · App Router: RSC)
+- Use the `@/` import alias when configured (not deep relative paths)
+- Write a spec in `.agents/specs/` before implementing a new feature or component
+
+## ASK FIRST
+
+- Adding new dependencies (check package.json first)
+- Upgrading Next.js or React versions
+- Changing the project structure or routing strategy
+- Modifying CI/CD configuration
+- Adding new environment variables
+
+## Project structure
+
+```
+pages/ or app/   # Routes (Pages Router or App Router)
+components/      # UI components
+public/          # Static assets
+styles/          # Global styles / Tailwind entry
+utils/ or lib/   # Helpers, API clients, queries
+```
+
+## Commands
+
+| Command | Purpose |
+|---------|---------|
+| `dev` | Start development server |
+| `build` | Production build |
+| `lint` | Lint code |
+| `start` | Serve production build |
+
+> Run via the project's package manager (`pnpm`, `npm run`, `yarn`) — check the lockfile.
+
+## Specs workflow
+
+`.agents/specs/` — one file per feature/component. Create before implementing.
+Status lifecycle: `draft → approved → in-progress → done`. Update status as work progresses.
+
+## MCPs
+
+Model Context Protocol servers this project uses:
+
+| Server | Purpose |
+|--------|---------|
+| | |
+
+> Setup instructions and full config → `.agents/mcps.md`
+
+## Skills & agents
+
+Custom commands and sub-agents available in this project:
+
+| /command | Purpose |
+|---------|---------|
+| | |
+
+> Command files → `.claude/commands/` (or `.agents/commands/` if migrated)
+
+## Reference files
+
+Consult based on task context — don't load all at once:
+
+| File | When to read |
+|------|-------------|
+| `.agents/pending-work.md` | Open tasks, priorities, and changelog — read every session |
+| `.agents/mcps.md` | MCP server list, setup, and config |
+| `.agents/specs/` | Feature/component specs — read before implementing |
+| `.agents/` | Add project reference files here |
+TEMPLATE
+}
+
 _mcps_starter() {
     cat << 'MCPS'
 # MCP Servers
@@ -388,6 +492,7 @@ _get_template() {
     case "$name" in
         default) _template_default ;;
         node)    _template_node ;;
+        next)    _template_next ;;
         python)  _template_python ;;
         *)       fail "Unknown template: '${name}'. Run 'setup-agents templates' to list available." ;;
     esac
@@ -397,6 +502,7 @@ cmd_templates() {
     bold "Available templates:"
     echo "  default  — minimal AI instructions (blank)"
     echo "  node     — Node.js / TypeScript project"
+    echo "  next     — Next.js project (next/image, Tailwind, specs workflow)"
     echo "  python   — Python project (ruff, pytest, mypy)"
     echo ""
     echo "Usage: setup-agents init --template <name>"

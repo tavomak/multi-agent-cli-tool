@@ -106,6 +106,7 @@ The session protocol in `AGENTS.md` tells the AI what to do:
 |------|---------|
 | `default` | Any project — blank slate |
 | `node` | Node.js / TypeScript |
+| `next` | Next.js (next/image, Tailwind, specs workflow) |
 | `python` | Python (ruff, pytest, mypy) |
 
 ```bash
