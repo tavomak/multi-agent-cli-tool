@@ -6,7 +6,7 @@ One file (`AGENTS.md`) — every AI tool reads it automatically.
 ## Install
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/tavomak/multi-agent-cli-tool/main/install.sh | sh
+curl -fsSL https://raw.githubusercontent.com/tavomak/multi-agent-cli-tool/main/install.sh | bash
 ```
 
 ## What it creates
@@ -30,11 +30,13 @@ your-project/
 |------|-------|-----|
 | Claude Code | `.claude/CLAUDE.md` | symlink → AGENTS.md (auto-loaded) |
 | OpenCode | `AGENTS.md` | native (auto-loaded) |
-| Cursor | `.cursorrules` | symlink → AGENTS.md (auto-loaded) |
-| Windsurf | `.windsurfrules` | symlink → AGENTS.md (auto-loaded) |
-| GitHub Copilot | `.github/copilot-instructions.md` | symlink → AGENTS.md |
-| Zed | `.zed/rules.md` | symlink → AGENTS.md |
-| Codex, others | `AGENTS.md` | reference manually at session start |
+| Cursor | `AGENTS.md` | native; `.cursorrules` symlink for older versions |
+| Windsurf | `AGENTS.md` | native; `.windsurfrules` symlink for older versions |
+| GitHub Copilot | `AGENTS.md` | native; `.github/copilot-instructions.md` symlink for older versions |
+| Zed | `AGENTS.md` | native; `.zed/rules.md` symlink for older versions |
+| Codex, others | `AGENTS.md` | native (auto-loaded) |
+
+> Modern Cursor, Windsurf, Copilot, Zed, and Codex all read `AGENTS.md` natively — the adapter symlinks (`--all`, `add <adapter>`) are legacy shims for older releases.
 
 ## Usage
 
@@ -57,6 +59,7 @@ setup-agents add cursor
 setup-agents add --all
 
 # Check current setup state + validate AGENTS.md
+# (exits non-zero on problems — usable in CI)
 setup-agents status
 
 # Migrate existing .claude/ subdirectories to .agents/

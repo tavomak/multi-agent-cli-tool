@@ -493,6 +493,137 @@ test_pending_work_has_today() {
 }
 
 # ─────────────────────────────────────────────────────────────────────────────
+# status exit codes
+# ─────────────────────────────────────────────────────────────────────────────
+
+test_status_exit_fail_missing_agents() {
+    local d; d="$(tmp_dir)"
+    assert_exit_fail "status fails when AGENTS.md missing" "$SETUP_AGENTS" status "$d"
+    rm -rf "$d"
+}
+
+test_status_exit_fail_missing_section() {
+    local d; d="$(tmp_dir)"
+    "$SETUP_AGENTS" init "$d" >/dev/null 2>&1
+    sed -i.bak '/^## NEVER DO/d' "$d/AGENTS.md"
+
+    assert_exit_fail "status fails when required section missing" "$SETUP_AGENTS" status "$d"
+    rm -rf "$d"
+}
+
+test_status_exit_fail_broken_symlink() {
+    local d; d="$(tmp_dir)"
+    "$SETUP_AGENTS" init "$d" >/dev/null 2>&1
+    ln -s nonexistent.md "$d/.agents/broken.md"
+
+    assert_exit_fail "status fails on broken symlink in .agents/" "$SETUP_AGENTS" status "$d"
+    rm -rf "$d"
+}
+
+# ─────────────────────────────────────────────────────────────────────────────
+# migrate: Claude-specific dirs
+# ─────────────────────────────────────────────────────────────────────────────
+
+test_migrate_yes_claude_dirs_stay() {
+    local d; d="$(tmp_dir)"
+    "$SETUP_AGENTS" init "$d" >/dev/null 2>&1
+    mkdir -p "$d/.claude/agents" "$d/.claude/skills" "$d/.claude/hooks" "$d/.claude/output-styles"
+    echo "# x" > "$d/.claude/agents/reviewer.md"
+
+    "$SETUP_AGENTS" migrate "$d" --yes >/dev/null 2>&1
+
+    # Claude-specific dirs default = leave in place
+    for sub in agents skills hooks output-styles; do
+        assert_dir         "$d/.claude/$sub"
+        assert_not_symlink "$d/.claude/$sub"
+        assert_missing     "$d/.agents/$sub"
+    done
+
+    rm -rf "$d"
+}
+
+test_migrate_reports_claude_dirs() {
+    local d; d="$(tmp_dir)"
+    "$SETUP_AGENTS" init "$d" >/dev/null 2>&1
+    mkdir -p "$d/.claude/skills"
+
+    assert_output_contains "skills/ recognized as Claude-specific" "Claude-specific" \
+        "$SETUP_AGENTS" migrate "$d" --dry-run
+
+    rm -rf "$d"
+}
+
+# ─────────────────────────────────────────────────────────────────────────────
+# update (via SETUP_AGENTS_REPO_RAW file:// override)
+# ─────────────────────────────────────────────────────────────────────────────
+
+# Layout helper: $d/bin/setup-agents (installed copy), $d/repo/setup-agents (remote)
+_update_sandbox() {
+    local d="$1"
+    mkdir -p "$d/bin" "$d/repo"
+    cp "$SETUP_AGENTS" "$d/bin/setup-agents"
+    chmod 755 "$d/bin/setup-agents"
+}
+
+test_update_same_version_noop() {
+    local d; d="$(tmp_dir)"
+    _update_sandbox "$d"
+    cp "$SETUP_AGENTS" "$d/repo/setup-agents"
+
+    assert_output_contains "reports up to date" "up to date" \
+        env SETUP_AGENTS_REPO_RAW="file://$d/repo" "$d/bin/setup-agents" update
+
+    rm -rf "$d"
+}
+
+test_update_newer_version_installs() {
+    local d; d="$(tmp_dir)"
+    _update_sandbox "$d"
+    sed 's/^VERSION=.*/VERSION="9.9.9"/' "$SETUP_AGENTS" > "$d/repo/setup-agents"
+
+    SETUP_AGENTS_REPO_RAW="file://$d/repo" "$d/bin/setup-agents" update >/dev/null 2>&1
+
+    assert_output_contains "binary reports new version" "9.9.9" "$d/bin/setup-agents" --version
+
+    local perms; perms="$(ls -l "$d/bin/setup-agents" | cut -c1-10)"
+    [[ "$perms" == "-rwxr-xr-x" ]] \
+        && _ok "installed binary is 755" \
+        || _fail "perms are '$perms' (want -rwxr-xr-x)"
+
+    rm -rf "$d"
+}
+
+test_update_rejects_invalid_bash() {
+    local d; d="$(tmp_dir)"
+    _update_sandbox "$d"
+    printf '<html>404 not found\nif [[ ; then\n' > "$d/repo/setup-agents"
+
+    assert_exit_fail "update rejects non-bash download" \
+        env SETUP_AGENTS_REPO_RAW="file://$d/repo" "$d/bin/setup-agents" update
+
+    cmp -s "$SETUP_AGENTS" "$d/bin/setup-agents" \
+        && _ok "binary unchanged after rejected update" \
+        || _fail "binary was modified by rejected update"
+
+    rm -rf "$d"
+}
+
+test_update_rejects_missing_version() {
+    local d; d="$(tmp_dir)"
+    _update_sandbox "$d"
+    printf '#!/usr/bin/env bash\necho hello\n' > "$d/repo/setup-agents"
+
+    assert_exit_fail "update rejects file without VERSION" \
+        env SETUP_AGENTS_REPO_RAW="file://$d/repo" "$d/bin/setup-agents" update
+
+    cmp -s "$SETUP_AGENTS" "$d/bin/setup-agents" \
+        && _ok "binary unchanged after rejected update" \
+        || _fail "binary was modified by rejected update"
+
+    rm -rf "$d"
+}
+
+# ─────────────────────────────────────────────────────────────────────────────
 # RUN ALL TESTS
 # ─────────────────────────────────────────────────────────────────────────────
 
@@ -527,13 +658,24 @@ TESTS=(
     test_status_clean
     test_status_detects_plain_claude_md
     test_status_validates_sections
+    test_status_exit_fail_missing_agents
+    test_status_exit_fail_missing_section
+    test_status_exit_fail_broken_symlink
 
     # migrate
     test_migrate_dry_run
     test_migrate_yes_specs
     test_migrate_yes_commands_stay
+    test_migrate_yes_claude_dirs_stay
+    test_migrate_reports_claude_dirs
     test_migrate_dry_run_no_changes
     test_error_migrate_no_claude_dir
+
+    # update
+    test_update_same_version_noop
+    test_update_newer_version_installs
+    test_update_rejects_invalid_bash
+    test_update_rejects_missing_version
 
     # undo
     test_undo_restores_claude_md

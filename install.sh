@@ -1,24 +1,34 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-VERSION="1.0.0"
-REPO_RAW="https://raw.githubusercontent.com/tavomak/multi-agent-cli-tool/main"
+REPO_RAW="${SETUP_AGENTS_REPO_RAW:-https://raw.githubusercontent.com/tavomak/multi-agent-cli-tool/main}"
 INSTALL_DIR="${HOME}/.local/bin"
 BIN_NAME="setup-agents"
 
-GREEN='\033[0;32m'; YELLOW='\033[1;33m'; NC='\033[0m'
+GREEN='\033[0;32m'; YELLOW='\033[1;33m'; RED='\033[0;31m'; NC='\033[0m'
 ok()   { echo -e "${GREEN}✓${NC} $*"; }
 warn() { echo -e "${YELLOW}!${NC} $*"; }
+fail() { echo -e "${RED}✗${NC} $*"; exit 1; }
 
-echo "Installing setup-agents v${VERSION}..."
+echo "Installing setup-agents..."
+
+TMP="$(mktemp)"
+trap 'rm -f "$TMP"' EXIT
+
+curl -fsSL "${REPO_RAW}/${BIN_NAME}" -o "$TMP" || fail "Download failed. Check your connection."
+bash -n "$TMP" 2>/dev/null || fail "Downloaded file is not valid bash — aborting."
+
+VERSION="$(grep '^VERSION=' "$TMP" | head -1 | cut -d'"' -f2)"
+[[ -n "$VERSION" ]] || fail "Downloaded file has no VERSION — aborting."
 
 mkdir -p "$INSTALL_DIR"
-curl -fsSL "${REPO_RAW}/${BIN_NAME}" -o "${INSTALL_DIR}/${BIN_NAME}"
-chmod +x "${INSTALL_DIR}/${BIN_NAME}"
+chmod 755 "$TMP"
+mv "$TMP" "${INSTALL_DIR}/${BIN_NAME}"
+trap - EXIT
 
-ok "Installed to ${INSTALL_DIR}/${BIN_NAME}"
+ok "Installed setup-agents v${VERSION} to ${INSTALL_DIR}/${BIN_NAME}"
 
-if ! echo ":${PATH}:" | grep -q ":${INSTALL_DIR}:"; then
+if ! echo ":${PATH}:" | grep -qF ":${INSTALL_DIR}:"; then
     warn "Add to your shell profile:"
     echo ""
     echo "  export PATH=\"\$HOME/.local/bin:\$PATH\""
