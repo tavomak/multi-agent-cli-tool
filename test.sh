@@ -116,6 +116,12 @@ test_templates() {
     assert_output_contains "lists python"  "python"  "$SETUP_AGENTS" templates
 }
 
+test_templates_preview() {
+    assert_output_contains "previews next template" "next/image" "$SETUP_AGENTS" templates next
+    assert_output_contains "previews python template" "ruff check" "$SETUP_AGENTS" templates python
+    assert_exit_fail "unknown template name fails" "$SETUP_AGENTS" templates nonexistent
+}
+
 test_error_unknown_flag() {
     assert_exit_fail "unknown flag fails" "$SETUP_AGENTS" --notaflag
 }
@@ -663,6 +669,7 @@ TESTS=(
     test_version
     test_help
     test_templates
+    test_templates_preview
     test_error_unknown_flag
     test_error_bad_template
 

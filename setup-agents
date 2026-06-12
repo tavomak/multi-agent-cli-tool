@@ -27,7 +27,7 @@ USAGE:
   setup-agents status [PATH]
   setup-agents undo [PATH]
   setup-agents update
-  setup-agents templates
+  setup-agents templates [name]
   setup-agents --help | --version
 
 COMMANDS:
@@ -41,7 +41,7 @@ COMMANDS:
   status [PATH]    Show current setup state and validate AGENTS.md
   undo [PATH]      Reverse init: restore symlinks to plain files
   update           Self-upgrade to latest version from GitHub
-  templates        List available AGENTS.md templates
+  templates [name] List available AGENTS.md templates, or preview one
 
 OPTIONS:
   --all              Create all tool adapter symlinks
@@ -499,13 +499,20 @@ _get_template() {
 }
 
 cmd_templates() {
+    # positional arg = template name to preview
+    if [[ -n "$TARGET_DIR" ]]; then
+        _get_template "$TARGET_DIR"
+        return
+    fi
+
     bold "Available templates:"
     echo "  default  — minimal AI instructions (blank)"
     echo "  node     — Node.js / TypeScript project"
     echo "  next     — Next.js project (next/image, Tailwind, specs workflow)"
     echo "  python   — Python project (ruff, pytest, mypy)"
     echo ""
-    echo "Usage: setup-agents init --template <name>"
+    echo "Preview:  setup-agents templates <name>"
+    echo "Usage:    setup-agents init --template <name>"
 }
 
 # ── arg parsing ────────────────────────────────────────────────────────────
@@ -550,12 +557,13 @@ done
 
 [[ -z "$CMD" ]] && { usage; exit 0; }
 
-# ── resolve target directory ───────────────────────────────────────────────
-if [[ -z "$TARGET_DIR" ]]; then
-    TARGET_DIR="$PWD"
-fi
-
-TARGET_DIR="$(cd "$TARGET_DIR" 2>/dev/null && pwd)" || fail "Directory not found: $TARGET_DIR"
+# ── resolve target directory (only for commands that operate on one) ───────
+case "$CMD" in
+    init|add|migrate|status|undo)
+        [[ -z "$TARGET_DIR" ]] && TARGET_DIR="$PWD"
+        TARGET_DIR="$(cd "$TARGET_DIR" 2>/dev/null && pwd)" || fail "Directory not found: $TARGET_DIR"
+        ;;
+esac
 
 # ── command: add ───────────────────────────────────────────────────────────
 cmd_add() {
